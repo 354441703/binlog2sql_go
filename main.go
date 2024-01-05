@@ -149,16 +149,16 @@ func onEvent(e *replication.BinlogEvent) error {
 		return nil
 	}
 	eventTime := time.Unix(int64(e.Header.Timestamp), 0)
-	//if (!cfg.startDatetime.IsZero() && eventTime.Before(cfg.startDatetime)) || (!cfg.stopDatetime.IsZero() && eventTime.After(cfg.stopDatetime)) {
+	//if (!cfg.StartDatetime.IsZero() && eventTime.Before(cfg.StartDatetime)) || (!cfg.StopDatetime.IsZero() && eventTime.After(cfg.StopDatetime)) {
 	//	return nil
 	//}
 	if !cfg.StartDatetime.IsZero() && eventTime.Before(cfg.StartDatetime) {
 		return nil
 	}
-	if !cfg.StartDatetime.IsZero() && eventTime.After(cfg.StartDatetime) {
+	if !cfg.StopDatetime.IsZero() && eventTime.After(cfg.StopDatetime) {
 		return nil
 	}
-	if currentBinlogFile == cfg.StopFile && cfg.StopPosition != 0 && e.Header.LogPos >= uint32(cfg.StopPosition) {
+	if currentBinlogFile == cfg.StopFile && cfg.StopPosition != 0 && e.Header.LogPos > uint32(cfg.StopPosition) {
 		return nil
 	}
 	if currentBinlogFile == cfg.StartFile && e.Header.LogPos < uint32(cfg.StartPosition) {
@@ -193,6 +193,7 @@ func BinlogLocalReader(file string) {
 	buf := make([]byte, binlogHeader)
 	_, err = f.Read(buf)
 	if err != nil {
+		fmt.Println(err)
 		return
 	}
 	if !bytes.Equal(buf, replication.BinLogFileHeader) {

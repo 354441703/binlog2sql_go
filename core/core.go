@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-var lastPos uint32
+var tableColumnsMap map[uint64][]string
 
 func ConcatSqlFromQueryEvent(e *replication.BinlogEvent, cfg *conf.Config) (sql string, err error) {
 	qe, ok := e.Event.(*replication.QueryEvent)
@@ -46,10 +46,19 @@ func ConcatSqlFromRowsEvent(e *replication.BinlogEvent, cfg *conf.Config) (sql s
 
 func genSqlStatement(eventType replication.EventType, rowsEvent *replication.RowsEvent, conf *conf.Config) (sql string, err error) {
 	var sqlList []string
-	columns, err := db.GetColumns(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table))
-	if err != nil {
-		return "", err
+	var columns []string
+	if tableColumnsMap == nil {
+		tableColumnsMap = make(map[uint64][]string)
 	}
+	columns, ok := tableColumnsMap[rowsEvent.TableID]
+	if !ok {
+		columns, err = db.GetColumns(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table))
+		if err != nil {
+			return "", err
+		}
+		tableColumnsMap[rowsEvent.TableID] = columns
+	}
+
 	if conf.Flashback {
 		if eventType == replication.WRITE_ROWS_EVENTv0 || eventType == replication.WRITE_ROWS_EVENTv1 ||
 			eventType == replication.WRITE_ROWS_EVENTv2 {

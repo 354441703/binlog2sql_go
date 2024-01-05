@@ -148,10 +148,6 @@ func ParseConfig(conf *Config) {
 				os.Exit(1)
 			}
 		}
-		//if conf.StopFile != conf.StartFile && (conf.StartDatetime.IsZero() || conf.StopDatetime.IsZero()) {
-		//	fmt.Println("Error: When searching across files, you must specify the -start-datetime and -stop-datetime")
-		//	os.Exit(1)
-		//}
 		if conf.startDatetimeStr != "" && conf.stopDatetimeStr != "" && conf.StopDatetime.Before(conf.StartDatetime) {
 			fmt.Println("Error: -stop-datetime Before -start-datetime")
 			os.Exit(1)
