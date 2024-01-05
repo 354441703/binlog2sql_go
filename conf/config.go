@@ -62,6 +62,7 @@ type Config struct {
 	LocalFile        string
 	Simple           bool
 	StopNever        bool
+	OnlyDML          bool
 	SqlType          stringSliceFlag
 }
 
@@ -111,6 +112,7 @@ func ParseConfig(conf *Config) {
 	flag.BoolVar(&conf.Local, "local", false, "Is the binary log exist at Local?")
 	flag.BoolVar(&conf.Simple, "simple", false, "Generate update sql in Simple mode, the unchanged column will be excluded ")
 	flag.BoolVar(&conf.StopNever, "stop-never", false, "Continuously parse binlog. default: stop at the latest event of '-stop-file'. ")
+	flag.BoolVar(&conf.OnlyDML, "only-dml", false, "only print dml, ignore ddl. (default false) ")
 	flag.Parse()
 	flag.Usage = usage
 	if help {

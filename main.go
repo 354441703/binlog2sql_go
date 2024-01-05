@@ -18,6 +18,8 @@ import (
 )
 
 var cfg *conf.Config
+var pos []uint32
+var currentBinlogFile string
 
 func main() {
 	var binlogList []string
@@ -92,6 +94,7 @@ func main() {
 				binlogList = append(binlogList, logName)
 			}
 		}
+		currentBinlogFile = cfg.StartFile
 		if !ok {
 			fmt.Printf("Error: -start-file %s not in mysql server", cfg.StartFile)
 			return
@@ -122,7 +125,8 @@ func main() {
 				if !cfg.StopNever && !utils.Contains(binlogList, string(rotateEvent.NextLogName)) {
 					break
 				}
-				fmt.Printf("#Rotate to %s\n", string(rotateEvent.NextLogName))
+				currentBinlogFile = string(rotateEvent.NextLogName)
+				fmt.Printf("#Rotate to %s\n", currentBinlogFile)
 			}
 			if err = onEvent(e); err != nil {
 				fmt.Println(err)
@@ -133,9 +137,15 @@ func main() {
 }
 
 func onEvent(e *replication.BinlogEvent) error {
-
-	// 过滤事务
-	if !isDMLEvent(e) {
+	pos = append(pos, e.Header.LogPos)
+	if len(pos) > 2 {
+		pos = pos[len(pos)-2:]
+	}
+	// event type filter
+	if !isDMLEvent(e) && e.Header.EventType != replication.QUERY_EVENT {
+		return nil
+	}
+	if cfg.OnlyDML && !isDMLEvent(e) {
 		return nil
 	}
 	eventTime := time.Unix(int64(e.Header.Timestamp), 0)
@@ -148,18 +158,25 @@ func onEvent(e *replication.BinlogEvent) error {
 	if !cfg.StartDatetime.IsZero() && eventTime.After(cfg.StartDatetime) {
 		return nil
 	}
-	if cfg.StopPosition != 0 && e.Header.LogPos >= uint32(cfg.StopPosition) {
+	if currentBinlogFile == cfg.StopFile && cfg.StopPosition != 0 && e.Header.LogPos >= uint32(cfg.StopPosition) {
 		return nil
 	}
-	// todo startPosition是startFile中的位置，如果整个startFile都没找到指定的位置则退出;
-	if uint32(cfg.StartPosition) <= e.Header.LogPos {
-		sql, err := core.ConcatSqlFromRowsEvent(e, cfg)
-		if err != nil {
-			return err
-		}
-		if sql != "" {
-			fmt.Println(sql)
-		}
+	if currentBinlogFile == cfg.StartFile && e.Header.LogPos < uint32(cfg.StartPosition) {
+		return nil
+	}
+	var err error
+	var sql string
+	if e.Header.EventType == replication.QUERY_EVENT && !cfg.Flashback {
+		sql, err = core.ConcatSqlFromQueryEvent(e, cfg)
+	} else if isDMLEvent(e) {
+		sql, err = core.ConcatSqlFromRowsEvent(e, cfg)
+	}
+	if err != nil {
+		return err
+	}
+	if sql != "" {
+		sql = fmt.Sprintf("%s #start %v end %v time %v", sql, pos[0], e.Header.LogPos, time.Unix(int64(e.Header.Timestamp), 0).Format("2006-01-02 15:04:05"))
+		fmt.Println(sql)
 	}
 	return nil
 }

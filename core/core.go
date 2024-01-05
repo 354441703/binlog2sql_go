@@ -7,46 +7,41 @@ import (
 	"fmt"
 	"github.com/go-mysql-org/go-mysql/replication"
 	"strings"
-	"time"
 )
 
+var lastPos uint32
+
+func ConcatSqlFromQueryEvent(e *replication.BinlogEvent, cfg *conf.Config) (sql string, err error) {
+	qe, ok := e.Event.(*replication.QueryEvent)
+	if !ok {
+		err = fmt.Errorf("event is not a Query Event")
+		return
+	}
+	ignoreQuery := []string{"BEGIN", "COMMIT"}
+	if utils.Contains(ignoreQuery, string(qe.Query)) {
+		return
+	}
+	if len(qe.Schema) != 0 {
+		sql = fmt.Sprintf("USE %s;", string(qe.Schema))
+	}
+	sql = fmt.Sprintf("%s %s;", sql, string(qe.Query))
+	return
+}
+
 func ConcatSqlFromRowsEvent(e *replication.BinlogEvent, cfg *conf.Config) (sql string, err error) {
-	//if !IsDmlEvent(e) && e.Header.EventType != replication.QUERY_EVENT {
-	//	err = fmt.Errorf("core event must be DML Event or Query Event")
-	//	return "", nil
-	//}
-	//if IsDmlEvent(e) {
 	rowsEvent, ok := e.Event.(*replication.RowsEvent)
 	if !ok {
 		err = fmt.Errorf("event is not a RowsEvent")
 		return
 	}
 	if cfg.Databases.Len() != 0 && !cfg.Databases.In(string(rowsEvent.Table.Schema)) {
-		//fmt.Println("schema not match")
 		return
 	}
 	if cfg.Tables.Len() != 0 && !cfg.Tables.In(string(rowsEvent.Table.Table)) {
-		//fmt.Println("table not match")
 		return
 	}
 	sql, err = genSqlStatement(e.Header.EventType, rowsEvent, cfg)
-	if err != nil {
-		return
-	}
-	if sql != "" {
-		sql = fmt.Sprintf("#pos %v time %v\n%s", e.Header.LogPos, time.Unix(int64(e.Header.Timestamp), 0).Format("2006-01-02 15:04:05"), sql)
-	}
 	return
-	//}
-	//else if !conf.flashback && e.Header.EventType == replication.QUERY_EVENT {
-	//	qe, _ := e.Event.(*replication.QueryEvent)
-	//	if string(qe.Query) != "BEGIN" && string(qe.Query) != "COMMIT" {
-	//		if len(qe.Schema) != 0 {
-	//			sql = fmt.Sprintf("USE %s;", string(qe.Schema))
-	//		}
-	//		sql = fmt.Sprintf("%s %s;", sql, string(qe.Query))
-	//	}
-	//}
 }
 
 func genSqlStatement(eventType replication.EventType, rowsEvent *replication.RowsEvent, conf *conf.Config) (sql string, err error) {
