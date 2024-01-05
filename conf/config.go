@@ -33,6 +33,14 @@ func (ssf *stringSliceFlag) In(val string) bool {
 	return false
 }
 
+func (ssf *stringSliceFlag) ToUpper() stringSliceFlag {
+	var result stringSliceFlag
+	for _, l := range *ssf {
+		_ = result.Set(strings.ToUpper(l))
+	}
+	return result
+}
+
 type Config struct {
 	Host             string
 	User             string
@@ -54,6 +62,7 @@ type Config struct {
 	LocalFile        string
 	Simple           bool
 	StopNever        bool
+	SqlType          stringSliceFlag
 }
 
 func NewConfig() *Config {
@@ -67,7 +76,7 @@ Usage: binlog2sql [[-h] | [-host] HOST] [[-u] | [-user] USER] [[-P] | [-port] PO
                   [--start-position STARTPOS] [--stop-position ENDPOS]
                   [--start-datetime STARTTIME] [--stop-datetime STOPTIME]
                   [--stop-never] [--help] [[-d] | [-databases] [DATABASES,[DATABASES ...]]]
-                  [[-t] | [-tables] [TABLES,[TABLES ...]]] [-K] [-B]
+                  [[-t] | [-tables] [TABLES,[TABLES ...]]] [-K] [-B] [-sql-type [INSERT,DELETE,UPDATE]]
 Options:
 `)
 	flag.PrintDefaults()
@@ -93,6 +102,7 @@ func ParseConfig(conf *Config) {
 	flag.BoolVar(&conf.Flashback, "flashback", false, "Is Flashback data to start_position of start-file (default false)")
 	flag.BoolVar(&conf.Flashback, "B", false, "Is Flashback data to start_position of start-file (default false) (short option)")
 	flag.BoolVar(&conf.NoPk, "noPK", false, "Generate insert sql without primary key if exists (default false)")
+	flag.Var(&conf.SqlType, "sql-type", "Original sql type you want to process, support INSERT, UPDATE, DELETE. (default INSERT,UPDATE,DELETE)")
 	flag.Var(&conf.Databases, "databases", "Comma-separated list of dbs you want to process")
 	flag.Var(&conf.Databases, "d", "Comma-separated list of dbs you want to process (short option)")
 	flag.Var(&conf.Tables, "tables", "Comma-separated list of Tables you want to process")
@@ -100,7 +110,7 @@ func ParseConfig(conf *Config) {
 	flag.StringVar(&conf.LocalFile, "local-file", "", "The binary logs in Local")
 	flag.BoolVar(&conf.Local, "local", false, "Is the binary log exist at Local?")
 	flag.BoolVar(&conf.Simple, "simple", false, "Generate update sql in Simple mode, the unchanged column will be excluded ")
-	flag.BoolVar(&conf.StopNever, "stop-never", false, "Continuously parse binlog. default: stop at the latest event when you start. ")
+	flag.BoolVar(&conf.StopNever, "stop-never", false, "Continuously parse binlog. default: stop at the latest event of '-stop-file'. ")
 	flag.Parse()
 	flag.Usage = usage
 	if help {
@@ -148,6 +158,13 @@ func ParseConfig(conf *Config) {
 			fmt.Println("Error: only one of Flashback or no_pk can be True")
 			flag.Usage()
 			os.Exit(1)
+		}
+		if conf.SqlType.Len() == 0 {
+			_ = conf.SqlType.Set("INSERT")
+			_ = conf.SqlType.Set("DELETE")
+			_ = conf.SqlType.Set("UPDATE")
+		} else {
+			conf.SqlType = conf.SqlType.ToUpper()
 		}
 	})
 }

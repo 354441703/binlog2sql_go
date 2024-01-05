@@ -1,6 +1,7 @@
 package core
 
 import (
+	"log"
 	"testing"
 )
 
@@ -85,3 +86,19 @@ func Test_genSimpleUpdateSql(t *testing.T) {
 //	}
 //	return
 //}
+
+func Test_genNoPkInsertSql(t *testing.T) {
+	columns := []string{"id", "a", "b", "c", "d", "f", "ff"}
+	//old_value := []interface{}{1, "world", "", "NULL", 22.35, true, nil}
+	val := []interface{}{1, "hello", "", "NULL", 22.35, true, nil}
+	pks := []string{"id"}
+	sql := genNoPkInsertSql("test", "t", columns, pks, val)
+	if sql != "INSERT INTO test.t(a,b,c,d,f,ff) VALUES('hello','','NULL',22.35,true,NULL);" {
+		log.Fatal(sql)
+	}
+	pks = []string{"id", "ff"}
+	sql = genNoPkInsertSql("test", "t", columns, pks, val)
+	if sql != "INSERT INTO test.t(a,b,c,d,f) VALUES('hello','','NULL',22.35,true);" {
+		log.Fatal(sql)
+	}
+}

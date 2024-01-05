@@ -119,7 +119,7 @@ func main() {
 			}
 			if e.Header.EventType == replication.ROTATE_EVENT {
 				rotateEvent := e.Event.(*replication.RotateEvent)
-				if !utils.Contains(binlogList, string(rotateEvent.NextLogName)) {
+				if !cfg.StopNever && !utils.Contains(binlogList, string(rotateEvent.NextLogName)) {
 					break
 				}
 				fmt.Printf("#Rotate to %s\n", string(rotateEvent.NextLogName))
