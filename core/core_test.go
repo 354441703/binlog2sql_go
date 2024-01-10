@@ -9,26 +9,6 @@ import (
 	"testing"
 )
 
-//func Test_startBinlogSyncer(t *testing.T) {
-//	cfg := &conf.Config{Host: "127.0.0.1", Port: 3306, User: "root", Password: "123456"}
-//	cfg.StartFile = "mysql-bin.000002"
-//	streamer, err := BinlogStreamReader(cfg)
-//	if err != nil {
-//		t.Log(err)
-//		return
-//	}
-//	event, err := streamer.GetEvent(context.Background())
-//	if err != nil {
-//		t.Log(err)
-//	}
-//	t.Logf("%+v", event.Header)
-//	event, err = streamer.GetEventWithStartTime(context.Background(), time.Now())
-//	if err != nil {
-//		t.Log(err)
-//	}
-//	t.Logf("%+v", event.Header)
-//}
-
 func Test_generateDeleteSql(t *testing.T) {
 	tab := &Table{
 		Schema:  "test",
