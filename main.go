@@ -10,16 +10,21 @@ import (
 	"fmt"
 	"github.com/go-mysql-org/go-mysql/mysql"
 	"github.com/go-mysql-org/go-mysql/replication"
+	"github.com/siddontang/go-log/log"
 	"math/rand"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 var cfg *conf.Config
 var pos []uint32
 var currentBinlogFile string
+
+var eventChan chan *binlogEvent
+var wg sync.WaitGroup
 
 func main() {
 	var binlogList []string
@@ -51,10 +56,12 @@ func main() {
 		fmt.Printf("Error: binlog format is not 'FULL' in %s:%v\n", cfg.Host, cfg.Port)
 		return
 	}
-	// -start-file 必须指定
-	// -start-pos 指startFile中的位置，默认为startFile的4
-	// -stop-file 可选指定，缺省为startFile
-	// -stop-pos 可选指定，缺省为stopFile的结尾
+	eventChan = make(chan *binlogEvent, cfg.Threads)
+	go processBinlogEvents()
+	defer func() {
+		wg.Wait()
+		close(eventChan)
+	}()
 	if cfg.Local {
 		BinlogLocalReader(cfg.LocalFile)
 	} else {
@@ -136,33 +143,46 @@ func main() {
 	}
 }
 
+type binlogEvent struct {
+	lastEventPos uint32
+	e            *replication.BinlogEvent
+}
+
 func onEvent(e *replication.BinlogEvent) error {
-	pos = append(pos, e.Header.LogPos)
-	if len(pos) > 2 {
+	if pos = append(pos, e.Header.LogPos); len(pos) > 2 {
 		pos = pos[len(pos)-2:]
 	}
-	// event type filter
+	eventChan <- &binlogEvent{
+		lastEventPos: pos[0],
+		e:            e,
+	}
+	return nil
+}
+
+func onEventWorker(b *binlogEvent) {
+	defer wg.Done()
+	e := b.e
 	if !isDMLEvent(e) && e.Header.EventType != replication.QUERY_EVENT {
-		return nil
+		return
 	}
 	if cfg.OnlyDML && !isDMLEvent(e) {
-		return nil
+		return
 	}
 	eventTime := time.Unix(int64(e.Header.Timestamp), 0)
 	//if (!cfg.StartDatetime.IsZero() && eventTime.Before(cfg.StartDatetime)) || (!cfg.StopDatetime.IsZero() && eventTime.After(cfg.StopDatetime)) {
 	//	return nil
 	//}
 	if !cfg.StartDatetime.IsZero() && eventTime.Before(cfg.StartDatetime) {
-		return nil
+		return
 	}
 	if !cfg.StopDatetime.IsZero() && eventTime.After(cfg.StopDatetime) {
-		return nil
+		return
 	}
 	if currentBinlogFile == cfg.StopFile && cfg.StopPosition != 0 && e.Header.LogPos > uint32(cfg.StopPosition) {
-		return nil
+		return
 	}
 	if currentBinlogFile == cfg.StartFile && e.Header.LogPos < uint32(cfg.StartPosition) {
-		return nil
+		return
 	}
 	var err error
 	var sql string
@@ -172,18 +192,20 @@ func onEvent(e *replication.BinlogEvent) error {
 		sql, err = core.ConcatSqlFromRowsEvent(e, cfg)
 	}
 	if err != nil {
-		return err
+		return
 	}
 	if sql != "" {
-		sql = fmt.Sprintf("%s #start %v end %v time %v", sql, pos[0], e.Header.LogPos, time.Unix(int64(e.Header.Timestamp), 0).Format("2006-01-02 15:04:05"))
+		sql := strings.Join(strings.Split(sql, ";"), fmt.Sprintf("; #start %v end %v time %v", b.lastEventPos, e.Header.LogPos, time.Unix(int64(e.Header.Timestamp), 0).Format("2006-01-02 15:04:05")))
+		//sql = fmt.Sprintf("%s #start %v end %v time %v", sql, b.lastEventPos, e.Header.LogPos, time.Unix(int64(e.Header.Timestamp), 0).Format("2006-01-02 15:04:05"))
 		fmt.Println(sql)
 	}
-	return nil
+	return
 }
 
 func BinlogLocalReader(file string) {
 	f, err := os.Open(file)
 	if err != nil {
+		fmt.Println(err)
 		return
 	}
 	if f != nil {
@@ -214,6 +236,11 @@ func BinlogLocalReader(file string) {
 
 func BinlogStreamReader(conf *conf.Config) (*replication.BinlogStreamer, error) {
 	rand.Seed(time.Now().UnixNano())
+	handler, err := log.NewFileHandler("binlog2sql.log", 0644)
+	if err != nil {
+		return nil, err
+	}
+	logger := log.NewDefault(handler)
 	syncConf := replication.BinlogSyncerConfig{
 		ServerID:        uint32(rand.Intn(2<<31) - 1),
 		Host:            conf.Host,
@@ -223,6 +250,7 @@ func BinlogStreamReader(conf *conf.Config) (*replication.BinlogStreamer, error) 
 		Charset:         "utf8",
 		SemiSyncEnabled: false,
 		UseDecimal:      false,
+		Logger:          logger,
 	}
 	replSyncer := replication.NewBinlogSyncer(syncConf)
 	position := mysql.Position{
@@ -242,5 +270,19 @@ func isDMLEvent(e *replication.BinlogEvent) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func processBinlogEvents() {
+	//fmt.Printf("start process binlog event\n")
+	for {
+		select {
+		case e, ok := <-eventChan:
+			if !ok {
+				return
+			}
+			wg.Add(1)
+			go onEventWorker(e)
+		}
 	}
 }

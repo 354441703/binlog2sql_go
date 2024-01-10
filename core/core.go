@@ -9,7 +9,16 @@ import (
 	"strings"
 )
 
-var tableColumnsMap map[uint64][]string
+var cachedPks, cachedCol *Cache
+
+func init() {
+	if cachedCol == nil {
+		cachedCol = NewCache()
+	}
+	if cachedPks == nil {
+		cachedPks = NewCache()
+	}
+}
 
 func ConcatSqlFromQueryEvent(e *replication.BinlogEvent, cfg *conf.Config) (sql string, err error) {
 	qe, ok := e.Event.(*replication.QueryEvent)
@@ -44,105 +53,102 @@ func ConcatSqlFromRowsEvent(e *replication.BinlogEvent, cfg *conf.Config) (sql s
 	return
 }
 
+type Table struct {
+	Schema, Table string
+	Columns, Pks  []string
+	TableId       uint64
+}
+
+func NewTable(re *replication.RowsEvent) *Table {
+	return &Table{TableId: re.TableID, Schema: string(re.Table.Schema), Table: string(re.Table.Table)}
+}
+
+func eventTypeToString(eventType replication.EventType) string {
+	switch eventType {
+	case replication.DELETE_ROWS_EVENTv0, replication.DELETE_ROWS_EVENTv1, replication.DELETE_ROWS_EVENTv2:
+		return "DELETE"
+	case replication.WRITE_ROWS_EVENTv0, replication.WRITE_ROWS_EVENTv1, replication.WRITE_ROWS_EVENTv2:
+		return "INSERT"
+	case replication.UPDATE_ROWS_EVENTv0, replication.UPDATE_ROWS_EVENTv1, replication.UPDATE_ROWS_EVENTv2:
+		return "UPDATE"
+	case replication.QUERY_EVENT:
+		return "QUERY"
+	default:
+		return ""
+	}
+}
+
 func genSqlStatement(eventType replication.EventType, rowsEvent *replication.RowsEvent, conf *conf.Config) (sql string, err error) {
 	var sqlList []string
-	var columns []string
-	if tableColumnsMap == nil {
-		tableColumnsMap = make(map[uint64][]string)
+	t := NewTable(rowsEvent)
+	if t.Columns, err = cachedCol.Get(rowsEvent, db.GetColumns); err != nil {
+		return
 	}
-	columns, ok := tableColumnsMap[rowsEvent.TableID]
-	if !ok {
-		columns, err = db.GetColumns(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table))
-		if err != nil {
-			return "", err
-		}
-		tableColumnsMap[rowsEvent.TableID] = columns
+	if t.Pks, err = cachedPks.Get(rowsEvent, db.GetPk); err != nil {
+		return
 	}
-
 	if conf.Flashback {
-		if eventType == replication.WRITE_ROWS_EVENTv0 || eventType == replication.WRITE_ROWS_EVENTv1 ||
-			eventType == replication.WRITE_ROWS_EVENTv2 {
+		switch eventTypeToString(eventType) {
+		case "DELETE":
+			if !conf.SqlType.In("DELETE") {
+				return "", nil
+			}
+			for _, row := range rowsEvent.Rows {
+				insertSql := generateInsertSql(t, row)
+				sqlList = append(sqlList, insertSql)
+			}
+		case "INSERT":
 			if !conf.SqlType.In("INSERT") {
 				return "", nil
 			}
 			for _, row := range rowsEvent.Rows {
-				delSql := generateDeleteSql(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table), columns, row)
+				delSql := generateDeleteSql(t, row)
 				sqlList = append(sqlList, delSql)
 			}
-		}
-		if eventType == replication.UPDATE_ROWS_EVENTv0 || eventType == replication.UPDATE_ROWS_EVENTv1 ||
-			eventType == replication.UPDATE_ROWS_EVENTv2 {
+		case "UPDATE":
 			if !conf.SqlType.In("UPDATE") {
 				return "", nil
 			}
 			for i := 0; i < len(rowsEvent.Rows); i = i + 2 {
 				updateSql := ""
 				if conf.Simple {
-					updateSql = genSimpleUpdateSql(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table), columns, rowsEvent.Rows[i+1], rowsEvent.Rows[i])
+					updateSql = genSimpleUpdateSql(t, rowsEvent.Rows[i+1], rowsEvent.Rows[i])
 				} else {
-					updateSql = generateUpdateSql(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table), columns, rowsEvent.Rows[i], rowsEvent.Rows[i+1])
+					updateSql = generateUpdateSql(t, rowsEvent.Rows[i+1], rowsEvent.Rows[i])
 				}
 				sqlList = append(sqlList, updateSql)
-			}
-		}
-		if eventType == replication.DELETE_ROWS_EVENTv0 || eventType == replication.DELETE_ROWS_EVENTv1 ||
-			eventType == replication.DELETE_ROWS_EVENTv2 {
-			if !conf.SqlType.In("DELETE") {
-				return "", nil
-			}
-			for _, row := range rowsEvent.Rows {
-				insertSql := generateInsertSql(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table), columns, row)
-				sqlList = append(sqlList, insertSql)
 			}
 		}
 	} else {
-		if eventType == replication.WRITE_ROWS_EVENTv0 || eventType == replication.WRITE_ROWS_EVENTv1 ||
-			eventType == replication.WRITE_ROWS_EVENTv2 {
+		switch eventTypeToString(eventType) {
+		case "DELETE":
+			if !conf.SqlType.In("DELETE") {
+				return "", nil
+			}
+			for _, row := range rowsEvent.Rows {
+				delSql := generateDeleteSql(t, row)
+				sqlList = append(sqlList, delSql)
+			}
+		case "INSERT":
 			if !conf.SqlType.In("INSERT") {
 				return "", nil
 			}
-			if conf.NoPk {
-				pks, err := db.GetPk(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table))
-				if err != nil {
-					return "", err
-				}
-				for _, row := range rowsEvent.Rows {
-					insertSql := genNoPkInsertSql(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table), columns, pks, row)
-					sql = fmt.Sprintf("%s \n %s", sql, insertSql)
-					sqlList = append(sqlList, insertSql)
-				}
-			} else {
-				for _, row := range rowsEvent.Rows {
-					insertSql := generateInsertSql(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table), columns, row)
-					sql = fmt.Sprintf("%s \n %s", sql, insertSql)
-					sqlList = append(sqlList, insertSql)
-				}
+			for _, row := range rowsEvent.Rows {
+				insertSql := generateInsertSql(t, row)
+				sqlList = append(sqlList, insertSql)
 			}
-
-		}
-		if eventType == replication.UPDATE_ROWS_EVENTv0 || eventType == replication.UPDATE_ROWS_EVENTv1 ||
-			eventType == replication.UPDATE_ROWS_EVENTv2 {
+		case "UPDATE":
 			if !conf.SqlType.In("UPDATE") {
 				return "", nil
 			}
 			for i := 0; i < len(rowsEvent.Rows); i = i + 2 {
 				updateSql := ""
 				if conf.Simple {
-					updateSql = genSimpleUpdateSql(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table), columns, rowsEvent.Rows[i], rowsEvent.Rows[i+1])
+					updateSql = genSimpleUpdateSql(t, rowsEvent.Rows[i], rowsEvent.Rows[i+1])
 				} else {
-					updateSql = generateUpdateSql(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table), columns, rowsEvent.Rows[i], rowsEvent.Rows[i+1])
+					updateSql = generateUpdateSql(t, rowsEvent.Rows[i], rowsEvent.Rows[i+1])
 				}
 				sqlList = append(sqlList, updateSql)
-			}
-		}
-		if eventType == replication.DELETE_ROWS_EVENTv0 || eventType == replication.DELETE_ROWS_EVENTv1 ||
-			eventType == replication.DELETE_ROWS_EVENTv2 {
-			if !conf.SqlType.In("DELETE") {
-				return "", nil
-			}
-			for _, row := range rowsEvent.Rows {
-				delSql := generateDeleteSql(string(rowsEvent.Table.Schema), string(rowsEvent.Table.Table), columns, row)
-				sqlList = append(sqlList, delSql)
 			}
 		}
 	}
@@ -150,7 +156,7 @@ func genSqlStatement(eventType replication.EventType, rowsEvent *replication.Row
 	return
 }
 
-func generateInsertSql(schema, table string, columns []string, row []interface{}) string {
+func generateInsertSql(t *Table, row []interface{}) string {
 	var valueString []string
 	for _, r := range row {
 		switch val := r.(type) {
@@ -163,12 +169,12 @@ func generateInsertSql(schema, table string, columns []string, row []interface{}
 		}
 	}
 	// INSERT INTO test.t(id,a,b,c,d,e,f) VALUES(1,"hello",23.5,true,NULL,"")
-	return fmt.Sprintf(`INSERT INTO %s.%s(%s) VALUES(%s);`, schema, table, strings.Join(columns, ","), strings.Join(valueString, ","))
+	return fmt.Sprintf(`INSERT INTO %s.%s(%s) VALUES(%s);`, t.Schema, t.Table, strings.Join(t.Columns, ","), strings.Join(valueString, ","))
 }
 
-func generateDeleteSql(schema, table string, columns []string, row []interface{}) string {
+func generateDeleteSql(t *Table, row []interface{}) string {
 	var condition []string
-	for i, col := range columns {
+	for i, col := range t.Columns {
 		switch val := row[i].(type) {
 		case string:
 			condition = append(condition, fmt.Sprintf("%s='%v'", col, val))
@@ -178,14 +184,14 @@ func generateDeleteSql(schema, table string, columns []string, row []interface{}
 			condition = append(condition, fmt.Sprintf("%s=%v", col, val))
 		}
 	}
-	return fmt.Sprintf("DELETE FROM %s.%s WHERE %s LIMIT 1;", schema, table, strings.Join(condition, " AND "))
+	return fmt.Sprintf("DELETE FROM %s.%s WHERE %s LIMIT 1;", t.Schema, t.Table, strings.Join(condition, " AND "))
 }
 
-func generateUpdateSql(schema, table string, columns []string, oldValue []interface{}, newValue []interface{}) string {
+func generateUpdateSql(t *Table, oldValue []interface{}, newValue []interface{}) string {
 	// UPDATE test.t SET id=1,a="hello",b=true,c=23.4,d=NULL,f="" WHERE id=1 AND a = 'world' AND b=true AND c=23.4 AND d IS NULL ADN f=''
 	var condition []string
 	var setString []string
-	for i, col := range columns {
+	for i, col := range t.Columns {
 		switch oval := oldValue[i].(type) {
 		case string:
 			condition = append(condition, fmt.Sprintf("%s='%v'", col, oval))
@@ -203,19 +209,16 @@ func generateUpdateSql(schema, table string, columns []string, oldValue []interf
 			setString = append(setString, fmt.Sprintf("%s=%v", col, nval))
 		}
 	}
-	return fmt.Sprintf("UPDATE %s.%s SET %s WHERE %s LIMIT 1;", schema, table, strings.Join(setString, ","), strings.Join(condition, " AND "))
+	return fmt.Sprintf("UPDATE %s.%s SET %s WHERE %s LIMIT 1;", t.Schema, t.Table, strings.Join(setString, ","), strings.Join(condition, " AND "))
 }
 
-func genSimpleUpdateSql(schema, table string, columns []string, oldValue []interface{}, newValue []interface{}) string {
+func genSimpleUpdateSql(t *Table, oldValue []interface{}, newValue []interface{}) string {
 	// UPDATE test.t SET id=1,a="hello",b=true,c=23.4,d=NULL,f="" WHERE id=1 AND a = 'world' AND b=true AND c=23.4 AND d IS NULL ADN f=''
 	var condition []string
 	var setString []string
-	pk, err := db.GetPk(schema, table)
-	if err != nil {
-		return ""
-	}
-	for i, col := range columns {
-		if !utils.Contains(pk, col) && fmt.Sprintf("%v", oldValue[i]) == fmt.Sprintf("%v", newValue[i]) {
+
+	for i, col := range t.Columns {
+		if !utils.Contains(t.Pks, col) && fmt.Sprintf("%v", oldValue[i]) == fmt.Sprintf("%v", newValue[i]) {
 			continue
 		}
 		switch oval := oldValue[i].(type) {
@@ -235,23 +238,19 @@ func genSimpleUpdateSql(schema, table string, columns []string, oldValue []inter
 			setString = append(setString, fmt.Sprintf("%s=%v", col, nval))
 		}
 	}
-	return fmt.Sprintf("UPDATE %s.%s SET %s WHERE %s LIMIT 1;", schema, table, strings.Join(setString, ","), strings.Join(condition, " AND "))
+	return fmt.Sprintf("UPDATE %s.%s SET %s WHERE %s LIMIT 1;", t.Schema, t.Table, strings.Join(setString, ","), strings.Join(condition, " AND "))
 }
 
-func genNoPkInsertSql(schema, table string, columns, pks []string, rows []interface{}) string {
+func genNoPkInsertSql(t *Table, rows []interface{}) string {
 	pkMap := make(map[string]bool)
-	pks, err := db.GetPk(schema, table)
-	if err != nil {
-		return ""
-	}
-	for _, pk := range pks {
+	for _, pk := range t.Pks {
 		pkMap[pk] = true
 	}
 	var columnsRes []string
 	var valueString []string
-	for i := 0; i < len(columns); i++ {
-		if !pkMap[columns[i]] {
-			columnsRes = append(columnsRes, columns[i])
+	for i := 0; i < len(t.Columns); i++ {
+		if !pkMap[t.Columns[i]] {
+			columnsRes = append(columnsRes, t.Columns[i])
 			switch val := rows[i].(type) {
 			case string:
 				valueString = append(valueString, fmt.Sprintf("'%v'", val))
@@ -262,5 +261,5 @@ func genNoPkInsertSql(schema, table string, columns, pks []string, rows []interf
 			}
 		}
 	}
-	return fmt.Sprintf(`INSERT INTO %s.%s(%s) VALUES(%s);`, schema, table, strings.Join(columnsRes, ","), strings.Join(valueString, ","))
+	return fmt.Sprintf(`INSERT INTO %s.%s(%s) VALUES(%s);`, t.Schema, t.Table, strings.Join(columnsRes, ","), strings.Join(valueString, ","))
 }
