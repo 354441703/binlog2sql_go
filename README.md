@@ -15,7 +15,10 @@
 
 
 ## 用户权限说明
-  使用的用户需要具有 SELECT,REPLICATION SLAVE,REPLICATION CLIENT权限；
+使用的用户需要具有 SELECT,REPLICATION SLAVE,REPLICATION CLIENT权限，授权语句如下：
+```mysql
+GRANT SELECT, REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'your_user'@'%';
+```
 其中SELECT权限是需要查询MySQL中的元数据信息，
 REPLICATION相关的权限是：进行在线解析时通过伪装成MySQL从库拉取binlog而需要。
 

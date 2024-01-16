@@ -236,7 +236,7 @@ func BinlogLocalReader(file string) {
 
 func BinlogStreamReader(conf *conf.Config) (*replication.BinlogStreamer, error) {
 	rand.Seed(time.Now().UnixNano())
-	handler, err := log.NewFileHandler("binlog2sql.log", 0644)
+	handler, err := log.NewFileHandler("binlog2sql_go.log", os.O_CREATE|os.O_WRONLY)
 	if err != nil {
 		return nil, err
 	}

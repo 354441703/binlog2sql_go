@@ -12,7 +12,11 @@ A command-line tool that parses MySQL binlog files (online and offline) and gene
 - Multithreading support (-threads)
 
 ## User Permission Requirements
-The user used must have the SELECT, REPLICATION SLAVE, and REPLICATION CLIENT privileges. The SELECT privilege is needed to query metadata information in MySQL, and the REPLICATION privileges are required for online parsing by pretending to be a MySQL slave to fetch binlogs.
+The user used must have the SELECT, REPLICATION SLAVE, and REPLICATION CLIENT privileges.
+```mysql
+GRANT SELECT, REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'your_user'@'%';
+```
+The SELECT privilege is needed to query metadata information in MySQL, and the REPLICATION privileges are required for online parsing by pretending to be a MySQL slave to fetch binlogs.
 
 ## Performance Comparison with the Original binlog2sql
 | Scenario                                             | Python binlog2sql | binlog2sql_go |
