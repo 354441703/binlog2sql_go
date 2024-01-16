@@ -20,6 +20,9 @@ all: test build
 build:
 	$(GOBUILD) -o $(BINARY_NAME) -v
 
+build-macos-amd64:
+	GOOS=darwin GOARCH=amd64 $(GOBUILD) -o $(BINARY_NAME) -v
+
 test:
 	$(GOTEST) -v ./...
 
