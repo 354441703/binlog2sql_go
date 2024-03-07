@@ -60,18 +60,18 @@ func GetPk(schema, table string) (pk []string, err error) {
 }
 
 type Variables struct {
-	ServerId                                    int
-	LogBin                                      bool
-	BinlogFormat, BinlogRowImage, MaxBinlogSize string
+	ServerId                     int
+	LogBin                       bool
+	BinlogFormat, BinlogRowImage string
 }
 
 func GetVariables() (v Variables, err error) {
-	queryRow := Conn.QueryRow("select @@server_id,@@log_bin, @@binlog_format,@@binlog_row_image,@@max_binlog_size/1024/1024 as max_binlog_size;")
+	queryRow := Conn.QueryRow("select @@server_id,@@log_bin, @@binlog_format,@@binlog_row_image;")
 	if queryRow.Err() != nil {
 		err = queryRow.Err()
 		return
 	}
-	if err = queryRow.Scan(&v.ServerId, &v.LogBin, &v.BinlogFormat, &v.BinlogRowImage, &v.MaxBinlogSize); err != nil {
+	if err = queryRow.Scan(&v.ServerId, &v.LogBin, &v.BinlogFormat, &v.BinlogRowImage); err != nil {
 		return
 	}
 	return

@@ -78,7 +78,7 @@ func main() {
 		//	return
 		//}
 		var _ignore string
-		rows, err := db.Conn.Query("show master logs;")
+		rows, err := db.Conn.Query("show binary logs;")
 		if err != nil {
 			fmt.Println(err)
 			return
