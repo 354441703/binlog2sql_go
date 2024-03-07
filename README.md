@@ -12,8 +12,6 @@
 - 在线持续解析(-stop-never)
 - 多线程(-threads)
 
-
-
 ## 用户权限说明
 使用的用户需要具有 SELECT,REPLICATION SLAVE,REPLICATION CLIENT权限，授权语句如下：
 ```mysql
@@ -27,7 +25,6 @@ REPLICATION相关的权限是：进行在线解析时通过伪装成MySQL从库�
 |----------------------------|-------------------|---------------|
 | 在线解析binlog(500M) 全文生成sql文件 | 12m59.034s        | 23.707s       |
 | 解析本地binlog(500M) 全文生成sql文件 | 不支持               | 28.634s       |
-
 
 ## 快速开始
 
@@ -57,3 +54,6 @@ git clone https://github.com/354441703/binlog2sql_go.git
 cd binlog2sql_go
 go build
 ```
+
+## 限制
+ -  本地模式暂时不支持一次解析多个文件

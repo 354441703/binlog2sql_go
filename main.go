@@ -205,7 +205,7 @@ func onEventWorker(b *binlogEvent) {
 func BinlogLocalReader(file string) {
 	f, err := os.Open(file)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("error: ", err)
 		return
 	}
 	if f != nil {

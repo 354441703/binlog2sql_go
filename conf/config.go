@@ -82,10 +82,10 @@ func NewConfig() *Config {
 func usage() {
 	fmt.Fprintf(os.Stderr, `
 Usage: binlog2sql [[-h] | [-host] HOST] [[-u] | [-user] USER] [[-P] | [-port] PORT] [[-p] | [-password] PASSWORD]
-                  [-local --local-files] | [--start-file STARTFILE [--stop-file ENDFILE]]
-                  [--start-position STARTPOS] [--stop-position ENDPOS]
-                  [--start-datetime STARTTIME] [--stop-datetime STOPTIME]
-                  [--stop-never] [--help] [[-d] | [-databases] [DATABASES,[DATABASES ...]]]
+                  [-local -local-files] | [-start-file STARTFILE [-stop-file ENDFILE]]
+                  [-start-position STARTPOS] [-stop-position ENDPOS]
+                  [-start-datetime STARTTIME] [-stop-datetime STOPTIME]
+                  [-stop-never] [-help] [[-d] | [-databases] [DATABASES,[DATABASES ...]]]
                   [[-t] | [-tables] [TABLES,[TABLES ...]]] [-K] [-B] [-sql-type [INSERT,DELETE,UPDATE]]
 				  [-threads n]
 Options:
@@ -107,9 +107,9 @@ func ParseConfig(conf *Config) {
 	flag.UintVar(&conf.Port, "port", 3306, "MySQL Port to use")
 	flag.UintVar(&conf.Port, "P", 3306, "MySQL Port to use (short option)")
 	flag.StringVar(&conf.StartFile, "start-file", "", "Start core file to be parsed")
-	flag.StringVar(&conf.StopFile, "stop-file", "", "Stop core file to be parsed. default: '--start-file'")
-	flag.UintVar(&conf.StartPosition, "start-position", 4, "Start position of the --start-file")
-	flag.UintVar(&conf.StopPosition, "stop-position", 0, "Stop position of --stop-file. default: latest position of '--stop-file'")
+	flag.StringVar(&conf.StopFile, "stop-file", "", "Stop core file to be parsed. default: '-start-file'")
+	flag.UintVar(&conf.StartPosition, "start-position", 4, "Start position of the -start-file")
+	flag.UintVar(&conf.StopPosition, "stop-position", 0, "Stop position of -stop-file. default: latest position of '-stop-file'")
 	flag.StringVar(&conf.startDatetimeStr, "start-datetime", "", "Start reading the core at first event having a datetime equal or posterior to the argument; the argument must be a date and time in the Local time zone, in any format accepted by the MySQL server for DATETIME and TIMESTAMP types, for example: 2004-12-25 11:25:56 (you should probably use quotes for your shell to set it properly).")
 	flag.StringVar(&conf.stopDatetimeStr, "stop-datetime", "", "  Stop reading the core at first event having a datetime equal or posterior to the argument; the argument must be a date and time in the Local time zone, in any format accepted by the MySQL server for DATETIME and TIMESTAMP types, for example: 2004-12-25 11:25:56 (you should probably use quotes for your shell to set it properly).")
 	flag.BoolVar(&conf.Flashback, "flashback", false, "Is Flashback data to start_position of start-file (default false)")
