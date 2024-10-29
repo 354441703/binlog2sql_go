@@ -81,7 +81,7 @@ func NewConfig() *Config {
 
 func usage() {
 	fmt.Fprintf(os.Stderr, `
-Usage: binlog2sql [[-h] | [-host] HOST] [[-u] | [-user] USER] [[-P] | [-port] PORT] [[-p] | [-password] PASSWORD]
+Usage: binlog2sql_go [[-h] | [-host] HOST] [[-u] | [-user] USER] [[-P] | [-port] PORT] [[-p] | [-password] PASSWORD]
                   [-local -local-files] | [-start-file STARTFILE [-stop-file ENDFILE]]
                   [-start-position STARTPOS] [-stop-position ENDPOS]
                   [-start-datetime STARTTIME] [-stop-datetime STOPTIME]
