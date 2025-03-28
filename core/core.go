@@ -33,7 +33,7 @@ func ConcatSqlFromQueryEvent(e *replication.BinlogEvent, cfg *conf.Config) (sql 
 	if len(qe.Schema) != 0 {
 		sql = fmt.Sprintf("USE %s;", string(qe.Schema))
 	}
-	sql = fmt.Sprintf("%s %s;", sql, string(qe.Query))
+	sql = fmt.Sprintf("%s\n%s;", sql, string(qe.Query))
 	return
 }
 

@@ -8,15 +8,16 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/go-mysql-org/go-mysql/mysql"
-	"github.com/go-mysql-org/go-mysql/replication"
-	"github.com/siddontang/go-log/log"
 	"math/rand"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/go-mysql-org/go-mysql/mysql"
+	"github.com/go-mysql-org/go-mysql/replication"
+	"github.com/siddontang/go-log/log"
 )
 
 var cfg *conf.Config
@@ -195,8 +196,8 @@ func onEventWorker(b *binlogEvent) {
 		return
 	}
 	if sql != "" {
-		sql := strings.Join(strings.Split(sql, ";"), fmt.Sprintf("; #start %v end %v time %v", b.lastEventPos, e.Header.LogPos, time.Unix(int64(e.Header.Timestamp), 0).Format("2006-01-02 15:04:05")))
-		//sql = fmt.Sprintf("%s #start %v end %v time %v", sql, b.lastEventPos, e.Header.LogPos, time.Unix(int64(e.Header.Timestamp), 0).Format("2006-01-02 15:04:05"))
+		// sql := strings.Join(strings.Split(sql, ";"), fmt.Sprintf("; #start %v end %v time %v", b.lastEventPos, e.Header.LogPos, time.Unix(int64(e.Header.Timestamp), 0).Format("2006-01-02 15:04:05")))
+		sql = fmt.Sprintf("%s #start %v end %v time %v", sql, b.lastEventPos, e.Header.LogPos, time.Unix(int64(e.Header.Timestamp), 0).Format("2006-01-02 15:04:05"))
 		fmt.Println(sql)
 	}
 	return
