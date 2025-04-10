@@ -12,7 +12,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/go-mysql-org/go-mysql/mysql"
@@ -23,9 +22,6 @@ import (
 var cfg *conf.Config
 var pos []uint32
 var currentBinlogFile string
-
-var eventChan chan *binlogEvent
-var wg sync.WaitGroup
 
 func main() {
 	var binlogList []string
@@ -57,27 +53,9 @@ func main() {
 		fmt.Printf("Error: binlog format is not 'FULL' in %s:%v\n", cfg.Host, cfg.Port)
 		return
 	}
-	eventChan = make(chan *binlogEvent, cfg.Threads)
-	go processBinlogEvents()
-	defer func() {
-		wg.Wait()
-		close(eventChan)
-	}()
 	if cfg.Local {
 		BinlogLocalReader(cfg.LocalFile)
 	} else {
-		//var curLogFile string
-		//var curLogPost string
-		//row := db.Conn.QueryRow("show master status;")
-		//if row.Err() != nil {
-		//	fmt.Println(row.Err().Error())
-		//	return
-		//}
-		//var _ignore string
-		//if err := row.Scan(&curLogFile, &curLogPost, &_ignore, &_ignore, &_ignore); err != nil {
-		//	fmt.Println(err.Error())
-		//	return
-		//}
 		var _ignore string
 		rows, err := db.Conn.Query("show binary logs;")
 		if err != nil {
@@ -144,46 +122,36 @@ func main() {
 	}
 }
 
-type binlogEvent struct {
-	lastEventPos uint32
-	e            *replication.BinlogEvent
-}
+// type binlogEvent struct {
+// 	lastEventPos uint32
+// 	e            *replication.BinlogEvent
+// }
 
 func onEvent(e *replication.BinlogEvent) error {
 	if pos = append(pos, e.Header.LogPos); len(pos) > 2 {
 		pos = pos[len(pos)-2:]
 	}
-	eventChan <- &binlogEvent{
-		lastEventPos: pos[0],
-		e:            e,
-	}
-	return nil
-}
 
-func onEventWorker(b *binlogEvent) {
-	defer wg.Done()
-	e := b.e
+	lastEventPos := pos[0]
+
 	if !isDMLEvent(e) && e.Header.EventType != replication.QUERY_EVENT {
-		return
+		return nil
 	}
 	if cfg.OnlyDML && !isDMLEvent(e) {
-		return
+		return nil
 	}
 	eventTime := time.Unix(int64(e.Header.Timestamp), 0)
-	//if (!cfg.StartDatetime.IsZero() && eventTime.Before(cfg.StartDatetime)) || (!cfg.StopDatetime.IsZero() && eventTime.After(cfg.StopDatetime)) {
-	//	return nil
-	//}
 	if !cfg.StartDatetime.IsZero() && eventTime.Before(cfg.StartDatetime) {
-		return
+		return nil
 	}
 	if !cfg.StopDatetime.IsZero() && eventTime.After(cfg.StopDatetime) {
-		return
+		return nil
 	}
 	if currentBinlogFile == cfg.StopFile && cfg.StopPosition != 0 && e.Header.LogPos > uint32(cfg.StopPosition) {
-		return
+		return nil
 	}
 	if currentBinlogFile == cfg.StartFile && e.Header.LogPos < uint32(cfg.StartPosition) {
-		return
+		return nil
 	}
 	var err error
 	var sql string
@@ -193,14 +161,14 @@ func onEventWorker(b *binlogEvent) {
 		sql, err = core.ConcatSqlFromRowsEvent(e, cfg)
 	}
 	if err != nil {
-		return
+		return nil
 	}
 	if sql != "" {
-		// sql := strings.Join(strings.Split(sql, ";"), fmt.Sprintf("; #start %v end %v time %v", b.lastEventPos, e.Header.LogPos, time.Unix(int64(e.Header.Timestamp), 0).Format("2006-01-02 15:04:05")))
-		sql = fmt.Sprintf("%s #start %v end %v time %v", sql, b.lastEventPos, e.Header.LogPos, time.Unix(int64(e.Header.Timestamp), 0).Format("2006-01-02 15:04:05"))
+		sql = fmt.Sprintf("%s #start %v end %v time %v", sql, lastEventPos, e.Header.LogPos, time.Unix(int64(e.Header.Timestamp), 0).Format("2006-01-02 15:04:05"))
 		fmt.Println(sql)
 	}
-	return
+
+	return nil
 }
 
 func BinlogLocalReader(file string) {
@@ -220,7 +188,7 @@ func BinlogLocalReader(file string) {
 		return
 	}
 	if !bytes.Equal(buf, replication.BinLogFileHeader) {
-		fmt.Println(fmt.Sprintf("file header is not match,file may be damaged "))
+		fmt.Printf("file header is not match,file may be damaged \n")
 		return
 	}
 	if _, err := f.Seek(binlogHeader, os.SEEK_SET); err != nil {
@@ -271,19 +239,5 @@ func isDMLEvent(e *replication.BinlogEvent) bool {
 		return true
 	default:
 		return false
-	}
-}
-
-func processBinlogEvents() {
-	//fmt.Printf("start process binlog event\n")
-	for {
-		select {
-		case e, ok := <-eventChan:
-			if !ok {
-				return
-			}
-			wg.Add(1)
-			go onEventWorker(e)
-		}
 	}
 }

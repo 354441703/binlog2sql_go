@@ -72,7 +72,7 @@ type Config struct {
 	StopNever        bool
 	OnlyDML          bool
 	SqlType          stringSliceFlag
-	Threads          uint
+	// Threads          uint
 }
 
 func NewConfig() *Config {
@@ -87,7 +87,6 @@ Usage: binlog2sql_go [[-h] | [-host] HOST] [[-u] | [-user] USER] [[-P] | [-port]
                   [-start-datetime STARTTIME] [-stop-datetime STOPTIME]
                   [-stop-never] [-help] [[-d] | [-databases] [DATABASES,[DATABASES ...]]]
                   [[-t] | [-tables] [TABLES,[TABLES ...]]] [-K] [-B] [-sql-type [INSERT,DELETE,UPDATE]]
-				  [-threads n]
 Options:
 `)
 	flag.PrintDefaults()
@@ -103,7 +102,7 @@ func ParseConfig(conf *Config) {
 	flag.StringVar(&conf.User, "u", "root", "MySQL Username to log in as (short option)")
 	flag.StringVar(&conf.Password, "password", "", "MySQL Password to use")
 	flag.StringVar(&conf.Password, "p", "", "MySQL Password to use (short option)")
-	flag.UintVar(&conf.Threads, "threads", 8, "The number of concurrent threads than handle the binlog event.")
+	// flag.UintVar(&conf.Threads, "threads", 8, "The number of concurrent threads than handle the binlog event.")
 	flag.UintVar(&conf.Port, "port", 3306, "MySQL Port to use")
 	flag.UintVar(&conf.Port, "P", 3306, "MySQL Port to use (short option)")
 	flag.StringVar(&conf.StartFile, "start-file", "", "Start core file to be parsed")
