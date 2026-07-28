@@ -57,7 +57,7 @@ func main() {
 		BinlogLocalReader(cfg.LocalFile)
 	} else {
 		var _ignore string
-		rows, err := db.Conn.Query("show binary logs;")
+		rows, err := db.Conn.Query("SHOW BINARY LOGS;")
 		if err != nil {
 			fmt.Println(err)
 			return
